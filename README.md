@@ -13,7 +13,7 @@ Install zipper by running the following command
     package main
 
     import (
-      "zipper"
+      "github.com/federomero/zipper"
       "os"
     )
 
