@@ -8,24 +8,38 @@ import (
   "strings"
 )
 
-func CreateZip(urls []string, fo io.Writer){
+type download struct {
+  url  string
+  body io.ReadCloser
+  err  error
+}
+
+func CreateZip(urls []string, fo io.Writer) error{
 
   buf := new(bytes.Buffer)
 
-  w := zip.NewWriter(buf)
+  archive := zip.NewWriter(buf)
+
+  c := make(chan download, len(urls))
 
   for _, url := range urls{
-    fileName := fileNameFromURL(url)
-    f, err := w.Create(fileName)
-    if err != nil { panic(err) }
-    appendFile(f, url)
+    go downloadURL(url, c)
   }
 
-  err := w.Close()
-  if err != nil { panic(err) }
+  for i := 0; i < len(urls); i++ {
+    d := <-c
+    if d.err != nil { return d.err }
+    fileName := fileNameFromURL(d.url)
+    w, err := archive.Create(fileName)
+    if err != nil { return err }
+    _, err = io.Copy(w, d.body)
+  }
+
+  err := archive.Close()
+  if err != nil { return err }
 
   _, err = buf.WriteTo(fo)
-  if err != nil { panic(err) }
+  return err
 }
 
 func fileNameFromURL(url string) string{
@@ -33,10 +47,12 @@ func fileNameFromURL(url string) string{
   return a[len(a)-1]
 }
 
-func appendFile(archive io.Writer, url string){
+func downloadURL(url string, c chan download){
   resp, err := http.Get(url)
-  defer resp.Body.Close()
-  if err != nil { panic(err) }
-  _, err = io.Copy(archive, resp.Body)
-  if err != nil { panic(err) }
+  if err != nil {
+    c <- download{url, nil, err}
+  }else{
+    c <- download{url, resp.Body, err}
+  }
+
 }
